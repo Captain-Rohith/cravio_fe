@@ -1,0 +1,1 @@
+export { sendLocationUpdate } from "../api";

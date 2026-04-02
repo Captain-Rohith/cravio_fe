@@ -34,7 +34,8 @@ type ItemValues = z.infer<typeof itemSchema>;
 export default function RestaurantMenuPage() {
   const queryClient = useQueryClient();
   const { restaurantId, setRestaurantId } = useRestaurantId();
-  const hasRestaurantProfileId = restaurantId.trim().length > 0;
+  const normalizedRestaurantId = restaurantId.trim();
+  const hasRestaurantProfileId = /^\d+$/.test(normalizedRestaurantId);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [editTarget, setEditTarget] = useState<{ id: string; name: string; price: number } | null>(null);
 
@@ -50,12 +51,13 @@ export default function RestaurantMenuPage() {
 
   const menuQuery = useQuery({
     enabled: hasRestaurantProfileId,
-    queryKey: ["restaurant-owned-menu", restaurantId],
-    queryFn: () => getRestaurantMenu(restaurantId),
+    queryKey: ["restaurant-owned-menu", normalizedRestaurantId],
+    queryFn: () => getRestaurantMenu(normalizedRestaurantId),
   });
 
   const menuError = menuQuery.isError ? mapApiError(menuQuery.error) : null;
   const profileMissing = menuError?.statusCode === 404;
+  const canManageMenu = hasRestaurantProfileId && !profileMissing;
 
   useEffect(() => {
     if (!editTarget) {
@@ -69,32 +71,32 @@ export default function RestaurantMenuPage() {
   }, [editForm, editTarget]);
 
   const addMutation = useMutation({
-    mutationFn: (values: ItemValues) => createRestaurantMenuItem(restaurantId, values),
+    mutationFn: (values: ItemValues) => createRestaurantMenuItem(normalizedRestaurantId, values),
     onSuccess: () => {
       toast.success("Menu item created");
       addForm.reset({ name: "", price: 0 });
-      queryClient.invalidateQueries({ queryKey: ["restaurant-owned-menu", restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ["restaurant-owned-menu", normalizedRestaurantId] });
     },
     onError: (error) => toast.error(mapApiError(error).message),
   });
 
   const editMutation = useMutation({
     mutationFn: ({ id, values }: { id: string; values: ItemValues }) =>
-      updateRestaurantMenuItem(restaurantId, id, values),
+      updateRestaurantMenuItem(normalizedRestaurantId, id, values),
     onSuccess: () => {
       toast.success("Menu item updated");
       setEditTarget(null);
-      queryClient.invalidateQueries({ queryKey: ["restaurant-owned-menu", restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ["restaurant-owned-menu", normalizedRestaurantId] });
     },
     onError: (error) => toast.error(mapApiError(error).message),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (menuItemId: string) => deleteRestaurantMenuItem(restaurantId, menuItemId),
+    mutationFn: (menuItemId: string) => deleteRestaurantMenuItem(normalizedRestaurantId, menuItemId),
     onSuccess: () => {
       toast.success("Menu item deleted");
       setDeleteTarget(null);
-      queryClient.invalidateQueries({ queryKey: ["restaurant-owned-menu", restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ["restaurant-owned-menu", normalizedRestaurantId] });
     },
     onError: (error) => toast.error(mapApiError(error).message),
   });
@@ -114,6 +116,7 @@ export default function RestaurantMenuPage() {
           value={restaurantId}
           onChange={(event) => setRestaurantId(event.target.value)}
           placeholder="Restaurant ID"
+          inputMode="numeric"
         />
         <p className="text-xs text-[var(--color-text-muted)]">
           Use your restaurant profile ID from create response `response.data.id`.
@@ -142,10 +145,15 @@ export default function RestaurantMenuPage() {
             <Button>Open location and create profile</Button>
           </Link>
         </Card>
-      ) : (
+      ) : null}
+
+      {canManageMenu ? (
         <Card>
           <h2 className="text-lg font-semibold">Add menu item</h2>
-          <form className="mt-4 grid gap-3 md:grid-cols-[1fr_220px_auto]" onSubmit={addForm.handleSubmit((values) => addMutation.mutate(values))}>
+          <form
+            className="mt-4 grid gap-3 md:grid-cols-[1fr_220px_auto]"
+            onSubmit={addForm.handleSubmit((values) => addMutation.mutate(values))}
+          >
             <Input placeholder="Item name" {...addForm.register("name")} error={addForm.formState.errors.name?.message} />
             <Input
               type="number"
@@ -157,7 +165,7 @@ export default function RestaurantMenuPage() {
             <Button type="submit" isLoading={addMutation.isPending}>Add</Button>
           </form>
         </Card>
-      )}
+      ) : null}
 
       {menuQuery.isLoading ? <Skeleton className="h-44" /> : null}
       {menuQuery.isError && !profileMissing ? (

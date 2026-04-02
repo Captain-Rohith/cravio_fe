@@ -6,6 +6,7 @@ const customerSidebar = [
   { href: "/customer/cart", label: "Cart" },
   { href: "/customer/checkout", label: "Checkout" },
   { href: "/customer/orders", label: "Order history" },
+  { href: "/customer/profile", label: "Profile" },
 ];
 
 export default function CustomerLayout({ children }: { children: React.ReactNode }) {

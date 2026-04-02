@@ -5,6 +5,7 @@ import axios, {
 } from "axios";
 import { env } from "@/lib/config/env";
 import { clearSessionSnapshot, clearToken, getToken } from "@/lib/auth/token-storage";
+import { useAuthStore } from "@/store/auth-store";
 
 export function appendAuthToken(
   config: InternalAxiosRequestConfig,
@@ -22,7 +23,11 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
-apiClient.interceptors.request.use((config) => appendAuthToken(config, getToken()));
+apiClient.interceptors.request.use((config) => {
+  const tokenFromStorage = getToken();
+  const tokenFromSession = useAuthStore.getState().session?.token ?? null;
+  return appendAuthToken(config, tokenFromStorage ?? tokenFromSession);
+});
 
 apiClient.interceptors.response.use(
   (response) => response,
@@ -30,6 +35,7 @@ apiClient.interceptors.response.use(
     if (error?.response?.status === 401) {
       clearToken();
       clearSessionSnapshot();
+      useAuthStore.getState().clearSession();
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("cravio:unauthorized"));
       }

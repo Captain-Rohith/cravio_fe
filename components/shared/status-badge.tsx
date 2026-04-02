@@ -5,6 +5,7 @@ type PaymentStatus = PaymentDetails["status"];
 
 const orderPalette: Record<OrderStatus, string> = {
   CREATED: "bg-slate-100 text-slate-700",
+  PAYMENT_PENDING: "bg-zinc-100 text-zinc-700",
   CONFIRMED: "bg-indigo-100 text-indigo-700",
   PREPARING: "bg-amber-100 text-amber-700",
   OUT_FOR_DELIVERY: "bg-blue-100 text-blue-700",

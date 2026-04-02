@@ -26,7 +26,8 @@ type Values = z.infer<typeof schema>;
 export default function RestaurantLocationPage() {
   const queryClient = useQueryClient();
   const { restaurantId, setRestaurantId } = useRestaurantId();
-  const hasRestaurantProfileId = restaurantId.trim().length > 0;
+  const normalizedRestaurantId = restaurantId.trim();
+  const hasRestaurantProfileId = /^\d+$/.test(normalizedRestaurantId);
   const form = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -38,8 +39,8 @@ export default function RestaurantLocationPage() {
 
   const restaurantQuery = useQuery({
     enabled: hasRestaurantProfileId,
-    queryKey: ["restaurant-owned-profile", restaurantId],
-    queryFn: () => getRestaurantById(restaurantId),
+    queryKey: ["restaurant-owned-profile", normalizedRestaurantId],
+    queryFn: () => getRestaurantById(normalizedRestaurantId),
   });
 
   useEffect(() => {
@@ -55,10 +56,10 @@ export default function RestaurantLocationPage() {
   }, [form, restaurantQuery.data]);
 
   const updateMutation = useMutation({
-    mutationFn: (values: Values) => updateRestaurant(restaurantId, values),
+    mutationFn: (values: Values) => updateRestaurant(normalizedRestaurantId, values),
     onSuccess: () => {
       toast.success("Restaurant location updated");
-      queryClient.invalidateQueries({ queryKey: ["restaurant-owned-profile", restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ["restaurant-owned-profile", normalizedRestaurantId] });
       queryClient.invalidateQueries({ queryKey: ["restaurants"] });
     },
     onError: (error) => toast.error(mapApiError(error).message),
@@ -97,9 +98,10 @@ export default function RestaurantLocationPage() {
           value={restaurantId}
           onChange={(event) => setRestaurantId(event.target.value)}
           placeholder="Restaurant ID"
+          inputMode="numeric"
         />
         <p className="text-xs text-[var(--color-text-muted)]">
-          Use your restaurant profile ID from create response `response.data.id`.
+          Use numeric restaurant profile ID from create response `response.data.id`.
         </p>
       </Card>
 

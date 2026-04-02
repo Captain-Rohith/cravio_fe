@@ -6,6 +6,7 @@ const adminSidebar = [
   { href: "/admin/restaurants", label: "Restaurant management" },
   { href: "/admin/restaurants/new", label: "Create restaurant" },
   { href: "/admin/orders", label: "Order operations" },
+  { href: "/admin/profile", label: "Profile" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -6,6 +6,7 @@ const restaurantSidebar = [
   { href: "/restaurant/menu", label: "Menu management" },
   { href: "/restaurant/orders", label: "Order management" },
   { href: "/restaurant/location", label: "Location settings" },
+  { href: "/restaurant/profile", label: "Profile" },
 ];
 
 export default function RestaurantLayout({ children }: { children: React.ReactNode }) {

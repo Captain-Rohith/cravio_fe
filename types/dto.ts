@@ -59,6 +59,7 @@ export type UpdateMenuItemRequest = CreateMenuItemRequest;
 
 export type OrderStatus =
   | "CREATED"
+  | "PAYMENT_PENDING"
   | "CONFIRMED"
   | "PREPARING"
   | "OUT_FOR_DELIVERY"
@@ -91,6 +92,23 @@ export interface OrderDetails {
   items: Array<{
     menuItemId: string;
     name?: string;
+    quantity: number;
+    unitPrice: number;
+  }>;
+}
+
+export interface NearbyAvailableOrder {
+  orderId: string;
+  customerId: string;
+  restaurantId: string;
+  restaurantName: string;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  deliveryPartnerId?: string;
+  totalAmount: number;
+  status: OrderStatus;
+  items: Array<{
+    menuItemId: string;
     quantity: number;
     unitPrice: number;
   }>;

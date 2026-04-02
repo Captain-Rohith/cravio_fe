@@ -2,43 +2,65 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
+import { ErrorState } from "@/components/shared/error-state";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { getOrderById, updateOrderStatus } from "@/features/orders/api";
+import {
+  claimNearbyOrder,
+  getNearbyAvailableOrders,
+  getOrderById,
+  updateOrderStatus,
+} from "@/features/orders/api";
 import { sendLocationUpdate } from "@/features/tracking/api";
 import { mapApiError } from "@/lib/api/error";
+import { formatCurrency } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import type { OrderStatus } from "@/types/dto";
 
-const statusOptions: OrderStatus[] = [
-  "CONFIRMED",
-  "PREPARING",
-  "OUT_FOR_DELIVERY",
-  "DELIVERED",
-  "CANCELLED",
-];
+const statusOptions: OrderStatus[] = ["OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"];
 
 export default function DeliveryOrdersPage() {
+  const queryClient = useQueryClient();
   const partnerId = useAuthStore((state) => state.session?.user.id) ?? "";
-  const [orderId, setOrderId] = useState("");
+  const [activeOrderId, setActiveOrderId] = useState("");
   const [polling, setPolling] = useState(false);
   const [coords, setCoords] = useState({ latitude: 12.9716, longitude: 77.5946, h3Index: "" });
 
-  const orderQuery = useQuery({
-    enabled: orderId.length > 2,
-    queryKey: ["delivery-order", orderId],
-    queryFn: () => getOrderById(orderId),
+  const nearbyOrdersQuery = useQuery({
+    queryKey: ["delivery-nearby-orders", coords.latitude, coords.longitude],
+    queryFn: () => getNearbyAvailableOrders(coords.latitude, coords.longitude),
+    refetchInterval: 10000,
+  });
+
+  const selectedOrderQuery = useQuery({
+    enabled: activeOrderId.trim().length > 0,
+    queryKey: ["delivery-order", activeOrderId],
+    queryFn: () => getOrderById(activeOrderId),
+  });
+
+  const claimMutation = useMutation({
+    mutationFn: (orderId: string) => claimNearbyOrder(orderId, coords.latitude, coords.longitude),
+    onSuccess: (claimedOrder) => {
+      const claimedOrderId = claimedOrder.orderId || claimedOrder.id;
+      setActiveOrderId(claimedOrderId);
+      toast.success(`Order ${claimedOrderId} claimed successfully`);
+      queryClient.invalidateQueries({ queryKey: ["delivery-nearby-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["delivery-order", claimedOrderId] });
+    },
+    onError: (error) => toast.error(mapApiError(error).message),
   });
 
   const updateMutation = useMutation({
-    mutationFn: (status: OrderStatus) => updateOrderStatus(orderId, status),
+    mutationFn: (status: OrderStatus) => updateOrderStatus(activeOrderId, status),
     onSuccess: () => {
       toast.success("Order status updated");
-      orderQuery.refetch();
+      selectedOrderQuery.refetch();
+      queryClient.invalidateQueries({ queryKey: ["delivery-nearby-orders"] });
     },
     onError: (error) => toast.error(mapApiError(error).message),
   });
@@ -46,7 +68,7 @@ export default function DeliveryOrdersPage() {
   const locationMutation = useMutation({
     mutationFn: () =>
       sendLocationUpdate({
-        orderId,
+        orderId: activeOrderId,
         deliveryPartnerId: partnerId,
         latitude: coords.latitude,
         longitude: coords.longitude,
@@ -57,7 +79,7 @@ export default function DeliveryOrdersPage() {
   });
 
   useEffect(() => {
-    if (!polling || !orderId) {
+    if (!polling || !activeOrderId) {
       return;
     }
 
@@ -66,27 +88,110 @@ export default function DeliveryOrdersPage() {
     }, 12000);
 
     return () => clearInterval(interval);
-  }, [locationMutation, orderId, polling]);
+  }, [locationMutation, activeOrderId, polling]);
+
+  const nearbyErrorMessage = nearbyOrdersQuery.isError
+    ? mapApiError(nearbyOrdersQuery.error).message
+    : "Unable to load nearby orders";
 
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between">
-        <h1 className="text-3xl font-semibold">Assigned orders dashboard</h1>
+        <h1 className="text-3xl font-semibold">Available orders in vicinity</h1>
         <Link href="/delivery/tracking" className="text-sm font-semibold text-[var(--color-brand)]">
           Open location tracking
         </Link>
       </header>
-      <Card className="space-y-4">
-        <div className="max-w-sm">
-          <label className="mb-1 block text-sm font-medium">Order ID</label>
-          <Input value={orderId} onChange={(event) => setOrderId(event.target.value)} />
+
+      <Card className="space-y-3">
+        <h2 className="text-xl font-semibold">Delivery vicinity</h2>
+        <p className="text-sm text-[var(--color-text-muted)]">
+          All nearby delivery partners at these coordinates will see the same unclaimed order pool.
+        </p>
+        <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+          <Input
+            type="number"
+            step="0.000001"
+            value={coords.latitude}
+            onChange={(event) => setCoords((prev) => ({ ...prev, latitude: Number(event.target.value) }))}
+            placeholder="Latitude"
+          />
+          <Input
+            type="number"
+            step="0.000001"
+            value={coords.longitude}
+            onChange={(event) => setCoords((prev) => ({ ...prev, longitude: Number(event.target.value) }))}
+            placeholder="Longitude"
+          />
+          <Button
+            variant="secondary"
+            isLoading={nearbyOrdersQuery.isFetching}
+            onClick={() => nearbyOrdersQuery.refetch()}
+          >
+            Refresh nearby orders
+          </Button>
         </div>
-        {orderQuery.data ? (
+      </Card>
+
+      <Card className="space-y-3">
+        <h2 className="text-xl font-semibold">Nearby unclaimed orders</h2>
+        {nearbyOrdersQuery.isLoading ? <p className="text-sm text-[var(--color-text-muted)]">Loading nearby orders...</p> : null}
+        {nearbyOrdersQuery.isError ? (
+          <ErrorState description={nearbyErrorMessage} onRetry={() => nearbyOrdersQuery.refetch()} />
+        ) : null}
+        {nearbyOrdersQuery.isSuccess && nearbyOrdersQuery.data.length === 0 ? (
+          <EmptyState
+            title="No nearby orders"
+            description="No unclaimed orders are currently available in your vicinity."
+          />
+        ) : null}
+        {nearbyOrdersQuery.isSuccess && nearbyOrdersQuery.data.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {nearbyOrdersQuery.data.map((order) => (
+              <Card key={order.orderId} className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold">{order.restaurantName}</h3>
+                  <StatusBadge value={order.status} type="order" />
+                </div>
+                <p className="text-sm text-[var(--color-text-muted)]">Order ID: {order.orderId}</p>
+                <p className="text-sm text-[var(--color-text-muted)]">
+                  Pickup: {order.pickupLatitude.toFixed(6)}, {order.pickupLongitude.toFixed(6)}
+                </p>
+                <p className="text-sm font-semibold text-[var(--color-text)]">
+                  {formatCurrency(order.totalAmount)}
+                </p>
+                <ul className="space-y-1 text-xs text-[var(--color-text-muted)]">
+                  {order.items.map((item, index) => (
+                    <li key={`${order.orderId}-${item.menuItemId}-${index}`}>
+                      Item {item.menuItemId} x {item.quantity}
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  isLoading={claimMutation.isPending}
+                  onClick={() => claimMutation.mutate(order.orderId)}
+                >
+                  Claim order
+                </Button>
+              </Card>
+            ))}
+          </div>
+        ) : null}
+      </Card>
+
+      <Card className="space-y-4">
+        <h2 className="text-xl font-semibold">Claimed order operations</h2>
+        <div className="max-w-sm">
+          <label className="mb-1 block text-sm font-medium">Active order ID</label>
+          <Input value={activeOrderId} onChange={(event) => setActiveOrderId(event.target.value)} />
+        </div>
+        {selectedOrderQuery.isLoading ? <p className="text-sm text-[var(--color-text-muted)]">Loading order...</p> : null}
+        {selectedOrderQuery.data ? (
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <StatusBadge value={orderQuery.data.status} type="order" />
+              <StatusBadge value={selectedOrderQuery.data.status} type="order" />
               <p className="text-sm text-[var(--color-text-muted)]">
-                Delivery partner: {orderQuery.data.deliveryPartnerId || "Unassigned"}
+                Delivery partner: {selectedOrderQuery.data.deliveryPartnerId || "Unassigned"}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -107,6 +212,9 @@ export default function DeliveryOrdersPage() {
 
       <Card className="space-y-3">
         <h2 className="text-xl font-semibold">Location update</h2>
+        <p className="text-sm text-[var(--color-text-muted)]">
+          Send live location updates for your active claimed order.
+        </p>
         <div className="grid gap-3 md:grid-cols-3">
           <Input
             type="number"
@@ -129,10 +237,28 @@ export default function DeliveryOrdersPage() {
           />
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => locationMutation.mutate()} isLoading={locationMutation.isPending}>
+          <Button
+            onClick={() => {
+              if (!activeOrderId.trim()) {
+                toast.error("Set an active order ID before sending tracking updates");
+                return;
+              }
+              locationMutation.mutate();
+            }}
+            isLoading={locationMutation.isPending}
+          >
             Send update
           </Button>
-          <Button variant="outline" onClick={() => setPolling((prev) => !prev)}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (!activeOrderId.trim()) {
+                toast.error("Set an active order ID before starting periodic updates");
+                return;
+              }
+              setPolling((prev) => !prev);
+            }}
+          >
             {polling ? "Stop periodic updates" : "Start periodic updates"}
           </Button>
         </div>

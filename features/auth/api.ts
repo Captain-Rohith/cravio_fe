@@ -1,20 +1,29 @@
 import { request } from "@/lib/api/client";
 import type { AuthResponse, LoginRequest, RegisterRequest } from "@/types/dto";
 
-interface AuthEnvelopeResponse {
+interface ApiEnvelope<TData> {
   message?: string;
-  data?: {
-    token?: string;
-    user?: {
-      id?: string | number;
-      fullName?: string;
-      email?: string;
-      role?: string;
-    };
+  data?: TData;
+}
+
+interface LoginData {
+  token?: string;
+  user?: {
+    id?: string | number;
+    fullName?: string;
+    email?: string;
+    role?: string;
   };
 }
 
-function normalizeAuthResponse(payload: AuthResponse | AuthEnvelopeResponse): AuthResponse {
+interface RegisteredUserData {
+  id?: string | number;
+  fullName?: string;
+  email?: string;
+  role?: string;
+}
+
+function normalizeAuthResponse(payload: AuthResponse | ApiEnvelope<LoginData>): AuthResponse {
   if ("token" in payload && typeof payload.token === "string") {
     return payload;
   }
@@ -40,15 +49,15 @@ function normalizeAuthResponse(payload: AuthResponse | AuthEnvelopeResponse): Au
 }
 
 export function registerUser(payload: RegisterRequest): Promise<AuthResponse> {
-  return request<AuthResponse | AuthEnvelopeResponse, RegisterRequest>({
+  return request<ApiEnvelope<RegisteredUserData>, RegisterRequest>({
     url: "/api/v1/auth/register",
     method: "POST",
     data: payload,
-  }).then(normalizeAuthResponse);
+  }).then(() => loginUser({ email: payload.email, password: payload.password }));
 }
 
 export function loginUser(payload: LoginRequest): Promise<AuthResponse> {
-  return request<AuthResponse | AuthEnvelopeResponse, LoginRequest>({
+  return request<AuthResponse | ApiEnvelope<LoginData>, LoginRequest>({
     url: "/api/v1/auth/login",
     method: "POST",
     data: payload,

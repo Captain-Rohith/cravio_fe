@@ -1,20 +1,54 @@
 const TOKEN_KEY = "cravio.jwt";
 const SESSION_KEY = "cravio.session";
+const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 let inMemoryToken: string | null = null;
 
-function getStorage(): Storage | null {
-  if (typeof window === "undefined") {
+function isBrowser(): boolean {
+  return typeof window !== "undefined";
+}
+
+function setCookie(name: string, value: string, maxAgeSeconds = COOKIE_MAX_AGE_SECONDS): void {
+  if (!isBrowser()) {
+    return;
+  }
+
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax${secure}`;
+}
+
+function getCookie(name: string): string | null {
+  if (!isBrowser()) {
     return null;
   }
 
-  return window.sessionStorage;
+  const key = `${encodeURIComponent(name)}=`;
+  const cookies = document.cookie ? document.cookie.split("; ") : [];
+
+  for (const cookie of cookies) {
+    if (cookie.startsWith(key)) {
+      try {
+        return decodeURIComponent(cookie.slice(key.length));
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
+function clearCookie(name: string): void {
+  if (!isBrowser()) {
+    return;
+  }
+
+  document.cookie = `${encodeURIComponent(name)}=; Path=/; Max-Age=0; SameSite=Lax`;
 }
 
 export function setToken(token: string): void {
   inMemoryToken = token;
-  const storage = getStorage();
-  storage?.setItem(TOKEN_KEY, token);
+  setCookie(TOKEN_KEY, token);
 }
 
 export function getToken(): string | null {
@@ -22,8 +56,7 @@ export function getToken(): string | null {
     return inMemoryToken;
   }
 
-  const storage = getStorage();
-  const token = storage?.getItem(TOKEN_KEY) ?? null;
+  const token = getCookie(TOKEN_KEY);
   inMemoryToken = token;
 
   return token;
@@ -31,23 +64,19 @@ export function getToken(): string | null {
 
 export function clearToken(): void {
   inMemoryToken = null;
-  const storage = getStorage();
-  storage?.removeItem(TOKEN_KEY);
+  clearCookie(TOKEN_KEY);
 }
 
 export function setSessionSnapshot(sessionJson: string): void {
-  const storage = getStorage();
-  storage?.setItem(SESSION_KEY, sessionJson);
+  setCookie(SESSION_KEY, sessionJson);
 }
 
 export function getSessionSnapshot(): string | null {
-  const storage = getStorage();
-  return storage?.getItem(SESSION_KEY) ?? null;
+  return getCookie(SESSION_KEY);
 }
 
 export function clearSessionSnapshot(): void {
-  const storage = getStorage();
-  storage?.removeItem(SESSION_KEY);
+  clearCookie(SESSION_KEY);
 }
 
 export const tokenStorageKeys = { TOKEN_KEY, SESSION_KEY };

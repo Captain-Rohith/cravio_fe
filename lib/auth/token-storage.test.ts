@@ -8,8 +8,17 @@ import {
 } from "@/lib/auth/token-storage";
 
 describe("token storage", () => {
+  const clearAllCookies = () => {
+    document.cookie.split(";").forEach((cookie) => {
+      const key = cookie.split("=")[0]?.trim();
+      if (key) {
+        document.cookie = `${key}=; Path=/; Max-Age=0; SameSite=Lax`;
+      }
+    });
+  };
+
   beforeEach(() => {
-    window.sessionStorage.clear();
+    clearAllCookies();
     clearToken();
     clearSessionSnapshot();
   });

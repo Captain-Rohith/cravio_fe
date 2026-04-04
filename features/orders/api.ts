@@ -54,7 +54,24 @@ function normalizeOrder(order: OrderDetails): OrderDetails {
     id: canonicalOrderId,
     customerId: String(order.customerId),
     restaurantId: String(order.restaurantId),
+    deliveryAddress: order.deliveryAddress ?? "",
     deliveryPartnerId: order.deliveryPartnerId ? String(order.deliveryPartnerId) : undefined,
+    deliveryLatitude:
+      typeof order.deliveryLatitude === "number" && Number.isFinite(order.deliveryLatitude)
+        ? order.deliveryLatitude
+        : undefined,
+    deliveryLongitude:
+      typeof order.deliveryLongitude === "number" && Number.isFinite(order.deliveryLongitude)
+        ? order.deliveryLongitude
+        : undefined,
+    restaurantLatitude:
+      typeof order.restaurantLatitude === "number" && Number.isFinite(order.restaurantLatitude)
+        ? order.restaurantLatitude
+        : undefined,
+    restaurantLongitude:
+      typeof order.restaurantLongitude === "number" && Number.isFinite(order.restaurantLongitude)
+        ? order.restaurantLongitude
+        : undefined,
     items: Array.isArray(order.items)
       ? order.items.map((item) => ({
           ...item,
@@ -172,6 +189,13 @@ export function getNearbyAvailableOrders(
     url: "/api/v1/orders/available/nearby",
     params: { latitude, longitude },
   }).then(normalizeNearbyOrderList);
+}
+
+export function getAcceptedOrdersByDeliveryPartner(): Promise<OrderDetails[]> {
+  return request<OrderDetails[] | ApiEnvelope<OrderDetails[]> | ListEnvelope<OrderDetails>>({
+    method: "GET",
+    url: "/api/v1/orders/delivery/accepted",
+  }).then(normalizeOrderList);
 }
 
 export function claimNearbyOrder(

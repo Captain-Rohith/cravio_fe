@@ -74,6 +74,15 @@ export default function RestaurantDiscoveryPage() {
     status: restaurant.address ?? "Active",
   }));
 
+  const customerMarker: MapMarker = {
+    id: "customer-search-origin",
+    type: "customer",
+    lat: coordinates.latitude,
+    lng: coordinates.longitude,
+    label: "You",
+    status: "Search location",
+  };
+
   return (
     <AppShell>
       <div className="page-enter space-y-6">
@@ -121,7 +130,7 @@ export default function RestaurantDiscoveryPage() {
 
         <MapView
           center={{ lat: coordinates.latitude, lng: coordinates.longitude }}
-          markers={restaurantMarkers}
+          markers={[customerMarker, ...restaurantMarkers]}
           onMarkerSelect={setSelectedMarkerId}
         />
 

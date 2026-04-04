@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -9,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ErrorState } from "@/components/shared/error-state";
 import { cancelOrderByCustomer, getOrderById } from "@/features/orders/api";
+import { isCustomerTrackingAvailable } from "@/features/orders/tracking";
 import { mapApiError } from "@/lib/api/error";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
@@ -56,18 +58,29 @@ export default function OrderDetailsPage() {
         <StatusBadge value={order.status} type="order" />
         <p className="text-sm text-[var(--color-text-muted)]">Created: {formatDateTime(order.createdAt)}</p>
         <p className="font-semibold">Total: {formatCurrency(order.totalAmount)}</p>
-        <Button
-          variant="outline"
-          disabled={
-            cancelMutation.isPending ||
-            !customerId ||
-            order.status === "DELIVERED" ||
-            order.status === "CANCELLED"
-          }
-          onClick={() => cancelMutation.mutate()}
-        >
-          Cancel order
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="outline"
+            disabled={
+              cancelMutation.isPending ||
+              !customerId ||
+              order.status === "DELIVERED" ||
+              order.status === "CANCELLED"
+            }
+            onClick={() => cancelMutation.mutate()}
+          >
+            Cancel order
+          </Button>
+          {isCustomerTrackingAvailable(order) ? (
+            <Link href={`/customer/orders/${order.orderId}/tracking`}>
+              <Button>Open tracking</Button>
+            </Link>
+          ) : (
+            <p className="self-center text-sm text-[var(--color-text-muted)]">
+              Tracking will be available once a delivery partner accepts your order.
+            </p>
+          )}
+        </div>
       </Card>
 
       <Card>

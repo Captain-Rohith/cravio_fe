@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -22,10 +23,30 @@ type CheckoutValues = z.infer<typeof checkoutSchema>;
 
 export default function CheckoutPage() {
   const router = useRouter();
+  const [destinationCoords, setDestinationCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const session = useAuthStore((state) => state.session);
   const cart = useCartStore((state) => state.items);
   const restaurantId = useCartStore((state) => state.restaurantId);
   const clearCart = useCartStore((state) => state.clearCart);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setDestinationCoords({
+          latitude: Number(position.coords.latitude.toFixed(6)),
+          longitude: Number(position.coords.longitude.toFixed(6)),
+        });
+      },
+      () => {
+        setDestinationCoords(null);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+    );
+  }, []);
 
   const form = useForm<CheckoutValues>({
     resolver: zodResolver(checkoutSchema),
@@ -47,6 +68,8 @@ export default function CheckoutPage() {
         customerId: session.user.id,
         restaurantId,
         deliveryAddress: values.deliveryAddress,
+        deliveryLatitude: destinationCoords?.latitude,
+        deliveryLongitude: destinationCoords?.longitude,
         items: cart.map((item) => ({ menuItemId: item.menuItemId, quantity: item.quantity })),
       });
 
@@ -76,6 +99,40 @@ export default function CheckoutPage() {
         Confirm delivery details and process payment.
       </p>
       <form className="mt-6 space-y-4" onSubmit={form.handleSubmit((values) => mutation.mutate(values))}>
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+          <p className="text-sm font-medium">Customer location for delivery</p>
+          {destinationCoords ? (
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              {destinationCoords.latitude}, {destinationCoords.longitude}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              Location unavailable. You can still place the order with address only.
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-2"
+            onClick={() => {
+              if (!navigator.geolocation) {
+                toast.error("Geolocation is not supported in this browser");
+                return;
+              }
+              navigator.geolocation.getCurrentPosition(
+                (position) =>
+                  setDestinationCoords({
+                    latitude: Number(position.coords.latitude.toFixed(6)),
+                    longitude: Number(position.coords.longitude.toFixed(6)),
+                  }),
+                () => toast.error("Unable to fetch current location"),
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+              );
+            }}
+          >
+            Use current location
+          </Button>
+        </div>
         <div>
           <label className="mb-1 block text-sm font-medium">Delivery address</label>
           <Input

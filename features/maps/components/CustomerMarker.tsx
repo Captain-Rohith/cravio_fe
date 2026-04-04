@@ -4,20 +4,20 @@ import { Marker, Popup } from "react-leaflet";
 import L, { type DivIcon } from "leaflet";
 import type { MapMarker } from "@/features/maps/types";
 
-const deliveryIcon: DivIcon = L.divIcon({
-  className: "map-pin map-pin--delivery",
+const customerIcon: DivIcon = L.divIcon({
+  className: "map-pin map-pin--customer",
   iconAnchor: [11, 11],
   popupAnchor: [0, -14],
-  html: '<span class="map-pin-core"><span class="map-pin-symbol">D</span></span><span class="map-pin-pulse"></span>',
+  html: '<span class="map-pin-core"><span class="map-pin-symbol">C</span></span>',
 });
 
-interface DeliveryMarkerProps {
+interface CustomerMarkerProps {
   marker: MapMarker;
 }
 
-export function DeliveryMarker({ marker }: DeliveryMarkerProps) {
+export function CustomerMarker({ marker }: CustomerMarkerProps) {
   return (
-    <Marker position={[marker.lat, marker.lng]} icon={deliveryIcon}>
+    <Marker position={[marker.lat, marker.lng]} icon={customerIcon}>
       <Popup>
         <p className="text-sm font-semibold">{marker.label}</p>
         {marker.status ? <p className="text-xs text-zinc-600">{marker.status}</p> : null}

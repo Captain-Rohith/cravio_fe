@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cancelOrderByCustomer, getOrdersByCustomer } from "@/features/orders/api";
+import { isCustomerTrackingAvailable } from "@/features/orders/tracking";
 import { mapApiError } from "@/lib/api/error";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
@@ -74,8 +75,10 @@ export default function OrderHistoryPage() {
           <p className="font-semibold">{formatCurrency(order.totalAmount)}</p>
           <div className="flex gap-2">
             {isValidOrderId(order.orderId) ? <Link href={`/customer/orders/${order.orderId}`}>Details</Link> : null}
-            {isValidOrderId(order.orderId) ? (
+            {isValidOrderId(order.orderId) && isCustomerTrackingAvailable(order) ? (
               <Link href={`/customer/orders/${order.orderId}/tracking`}>Tracking</Link>
+            ) : isValidOrderId(order.orderId) ? (
+              <span className="text-sm text-[var(--color-text-muted)]">Tracking pending</span>
             ) : null}
             <Button
               variant="outline"

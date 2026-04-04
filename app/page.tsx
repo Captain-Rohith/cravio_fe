@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getOrdersByCustomer } from "@/features/orders/api";
+import { isCustomerTrackingAvailable } from "@/features/orders/tracking";
 import { mapApiError } from "@/lib/api/error";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
@@ -103,9 +104,13 @@ export default function Home() {
                       <Link href={`/customer/orders/${order.orderId}`}>
                         <Button variant="outline">Details</Button>
                       </Link>
-                      <Link href={`/customer/orders/${order.orderId}/tracking`}>
-                        <Button>Track</Button>
-                      </Link>
+                      {isCustomerTrackingAvailable(order) ? (
+                        <Link href={`/customer/orders/${order.orderId}/tracking`}>
+                          <Button>Track</Button>
+                        </Link>
+                      ) : (
+                        <Button disabled>Tracking pending</Button>
+                      )}
                     </div>
                   </Card>
                 ))}

@@ -6,9 +6,9 @@ import type { MapMarker } from "@/features/maps/types";
 
 const restaurantIcon: DivIcon = L.divIcon({
   className: "map-pin map-pin--restaurant",
-  iconAnchor: [10, 10],
-  popupAnchor: [0, -12],
-  html: '<span class="map-pin-core"></span>',
+  iconAnchor: [11, 11],
+  popupAnchor: [0, -14],
+  html: '<span class="map-pin-core"><span class="map-pin-symbol">R</span></span>',
 });
 
 interface RestaurantMarkerProps {

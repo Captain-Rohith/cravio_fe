@@ -70,6 +70,8 @@ export interface CreateOrderRequest {
   customerId: string;
   restaurantId: string;
   deliveryAddress: string;
+  deliveryLatitude?: number;
+  deliveryLongitude?: number;
   items: Array<{
     menuItemId: string;
     quantity: number;
@@ -81,10 +83,12 @@ export interface OrderDetails {
   id: string;
   customerId: string;
   restaurantId: string;
+  deliveryAddress?: string;
+  deliveryLatitude?: number;
+  deliveryLongitude?: number;
   restaurantLatitude?: number;
   restaurantLongitude?: number;
   deliveryPartnerId?: string;
-  deliveryAddress: string;
   status: OrderStatus;
   totalAmount: number;
   createdAt?: string;
@@ -136,9 +140,16 @@ export interface TrackingLocationRequest {
   h3Index?: string;
 }
 
+export interface CustomerTrackingLocationRequest {
+  orderId: string;
+  latitude: number;
+  longitude: number;
+}
+
 export interface TrackingEvent {
   orderId: string | number;
   deliveryPartnerId?: string | number;
+  customerId?: string | number;
   latitude: number;
   longitude: number;
   h3Index?: string;

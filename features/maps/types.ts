@@ -1,4 +1,4 @@
-export type MarkerType = "restaurant" | "delivery-partner";
+export type MarkerType = "restaurant" | "delivery-partner" | "customer";
 
 export type MapMarker = {
   id: string;

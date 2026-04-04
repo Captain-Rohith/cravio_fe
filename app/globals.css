@@ -78,12 +78,22 @@ textarea {
 }
 
 .map-pin-core {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 14px;
   height: 14px;
   border-radius: 999px;
   border: 2px solid #ffffff;
   box-shadow: 0 0 0 2px rgb(0 0 0 / 0.12);
+}
+
+.map-pin-symbol {
+  font-family: var(--font-heading), sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
 }
 
 .map-pin--restaurant .map-pin-core {
@@ -92,6 +102,10 @@ textarea {
 
 .map-pin--delivery .map-pin-core {
   background: var(--color-brand);
+}
+
+.map-pin--customer .map-pin-core {
+  background: #1d4ed8;
 }
 
 .map-pin-pulse {

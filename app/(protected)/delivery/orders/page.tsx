@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
@@ -11,18 +12,42 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
 import { StatusBadge } from "@/components/shared/status-badge";
 import {
+  getAcceptedOrdersByDeliveryPartner,
   claimNearbyOrder,
   getNearbyAvailableOrders,
   getOrderById,
   updateOrderStatus,
 } from "@/features/orders/api";
-import { sendLocationUpdate } from "@/features/tracking/api";
+import { getLatestCustomerTrackingEvent, sendLocationUpdate } from "@/features/tracking/api";
+import { useCustomerOrderTracking } from "@/features/tracking/hooks/useCustomerOrderTracking";
+import type { MapMarker } from "@/features/maps/types";
 import { mapApiError } from "@/lib/api/error";
 import { formatCurrency } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import type { OrderStatus } from "@/types/dto";
 
 const statusOptions: OrderStatus[] = ["OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"];
+
+const MapView = dynamic(
+  () => import("@/features/maps/components/MapView").then((mod) => mod.MapView),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[380px] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]" />
+    ),
+  },
+);
+
+function ConnectionBadge({ state }: { state: "connected" | "reconnecting" | "offline" }) {
+  const palette =
+    state === "connected"
+      ? "bg-emerald-100 text-emerald-700"
+      : state === "reconnecting"
+        ? "bg-amber-100 text-amber-700"
+        : "bg-slate-100 text-slate-700";
+
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${palette}`}>{state}</span>;
+}
 
 export default function DeliveryOrdersPage() {
   const queryClient = useQueryClient();
@@ -42,6 +67,24 @@ export default function DeliveryOrdersPage() {
     queryKey: ["delivery-order", activeOrderId],
     queryFn: () => getOrderById(activeOrderId),
   });
+  const latestCustomerLocationQuery = useQuery({
+    enabled: activeOrderId.trim().length > 0,
+    queryKey: ["delivery-customer-latest", activeOrderId],
+    queryFn: () => getLatestCustomerTrackingEvent(activeOrderId),
+    refetchInterval: 10000,
+  });
+  const {
+    latestEvent: customerLiveEvent,
+    connectionState: customerTrackingConnectionState,
+    customerMarker: customerLiveMarker,
+    lastUpdatedLabel: customerTrackingUpdatedLabel,
+  } = useCustomerOrderTracking(activeOrderId.trim() ? activeOrderId : null);
+
+  const acceptedOrdersQuery = useQuery({
+    queryKey: ["delivery-accepted-orders"],
+    queryFn: () => getAcceptedOrdersByDeliveryPartner(),
+    refetchInterval: 15000,
+  });
 
   const claimMutation = useMutation({
     mutationFn: (orderId: string) => claimNearbyOrder(orderId, coords.latitude, coords.longitude),
@@ -51,6 +94,7 @@ export default function DeliveryOrdersPage() {
       toast.success(`Order ${claimedOrderId} claimed successfully`);
       queryClient.invalidateQueries({ queryKey: ["delivery-nearby-orders"] });
       queryClient.invalidateQueries({ queryKey: ["delivery-order", claimedOrderId] });
+      queryClient.invalidateQueries({ queryKey: ["delivery-accepted-orders"] });
     },
     onError: (error) => toast.error(mapApiError(error).message),
   });
@@ -61,6 +105,7 @@ export default function DeliveryOrdersPage() {
       toast.success("Order status updated");
       selectedOrderQuery.refetch();
       queryClient.invalidateQueries({ queryKey: ["delivery-nearby-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["delivery-accepted-orders"] });
     },
     onError: (error) => toast.error(mapApiError(error).message),
   });
@@ -93,6 +138,105 @@ export default function DeliveryOrdersPage() {
   const nearbyErrorMessage = nearbyOrdersQuery.isError
     ? mapApiError(nearbyOrdersQuery.error).message
     : "Unable to load nearby orders";
+
+  const acceptedOrders = useMemo(() => acceptedOrdersQuery.data ?? [], [acceptedOrdersQuery.data]);
+  const acceptedMarkers = useMemo<MapMarker[]>(() => {
+    const markers: MapMarker[] = [];
+
+    acceptedOrders.forEach((order) => {
+      if (typeof order.restaurantLatitude === "number" && typeof order.restaurantLongitude === "number") {
+        markers.push({
+          id: `pickup-${order.orderId}`,
+          type: "restaurant",
+          lat: order.restaurantLatitude,
+          lng: order.restaurantLongitude,
+          label: `Pickup - Order ${order.orderId}`,
+          status: "Restaurant",
+        });
+      }
+
+      if (typeof order.deliveryLatitude === "number" && typeof order.deliveryLongitude === "number") {
+        markers.push({
+          id: `customer-${order.orderId}`,
+          type: "customer",
+          lat: order.deliveryLatitude,
+          lng: order.deliveryLongitude,
+          label: `Customer - Order ${order.orderId}`,
+          status: order.deliveryAddress || "Drop location",
+        });
+      }
+    });
+
+    return markers;
+  }, [acceptedOrders]);
+
+  const effectiveCustomerTrackingEvent = useMemo(
+    () => customerLiveEvent ?? latestCustomerLocationQuery.data ?? null,
+    [customerLiveEvent, latestCustomerLocationQuery.data],
+  );
+  const effectiveLiveCustomerMarker = useMemo(
+    () =>
+      customerLiveMarker ??
+      (effectiveCustomerTrackingEvent
+        ? {
+            id: String(effectiveCustomerTrackingEvent.customerId ?? `customer-${activeOrderId}`),
+            type: "customer" as const,
+            lat: effectiveCustomerTrackingEvent.latitude,
+            lng: effectiveCustomerTrackingEvent.longitude,
+            label: "Customer (live)",
+            status: "Live shared location",
+            updatedAt: effectiveCustomerTrackingEvent.timestamp,
+          }
+        : null),
+    [activeOrderId, customerLiveMarker, effectiveCustomerTrackingEvent],
+  );
+
+  const activeOrderTrackingMarkers = useMemo<MapMarker[]>(() => {
+    const activeOrder = selectedOrderQuery.data;
+    if (!activeOrder) {
+      return [];
+    }
+
+    const markers: MapMarker[] = [];
+
+    if (typeof activeOrder.restaurantLatitude === "number" && typeof activeOrder.restaurantLongitude === "number") {
+      markers.push({
+        id: `active-pickup-${activeOrder.orderId}`,
+        type: "restaurant",
+        lat: activeOrder.restaurantLatitude,
+        lng: activeOrder.restaurantLongitude,
+        label: "Pickup",
+        status: "Restaurant",
+      });
+    }
+
+    if (effectiveLiveCustomerMarker) {
+      markers.push(effectiveLiveCustomerMarker);
+    } else if (
+      typeof activeOrder.deliveryLatitude === "number" &&
+      typeof activeOrder.deliveryLongitude === "number"
+    ) {
+      markers.push({
+        id: `active-destination-${activeOrder.orderId}`,
+        type: "customer",
+        lat: activeOrder.deliveryLatitude,
+        lng: activeOrder.deliveryLongitude,
+        label: "Customer destination",
+        status: activeOrder.deliveryAddress || "Drop location",
+      });
+    }
+
+    markers.push({
+      id: "active-delivery-self",
+      type: "delivery-partner",
+      lat: coords.latitude,
+      lng: coords.longitude,
+      label: "You (delivery)",
+      status: "Current location",
+    });
+
+    return markers;
+  }, [coords.latitude, coords.longitude, effectiveLiveCustomerMarker, selectedOrderQuery.data]);
 
   return (
     <div className="space-y-4">
@@ -179,6 +323,67 @@ export default function DeliveryOrdersPage() {
         ) : null}
       </Card>
 
+      <Card className="space-y-3">
+        <h2 className="text-xl font-semibold">My accepted orders</h2>
+        {acceptedOrdersQuery.isLoading ? (
+          <p className="text-sm text-[var(--color-text-muted)]">Loading accepted orders...</p>
+        ) : null}
+        {acceptedOrdersQuery.isError ? (
+          <ErrorState
+            description={mapApiError(acceptedOrdersQuery.error).message}
+            onRetry={() => acceptedOrdersQuery.refetch()}
+          />
+        ) : null}
+        {acceptedOrdersQuery.isSuccess && acceptedOrders.length === 0 ? (
+          <EmptyState
+            title="No accepted orders yet"
+            description="Claim an order from nearby pool to start delivery."
+          />
+        ) : null}
+        {acceptedOrdersQuery.isSuccess && acceptedOrders.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {acceptedOrders.map((order) => (
+              <Card key={`accepted-${order.orderId}`} className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">Order #{order.orderId}</p>
+                  <StatusBadge value={order.status} type="order" />
+                </div>
+                <p className="text-xs text-[var(--color-text-muted)]">Customer ID: {order.customerId}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Destination:{" "}
+                  {typeof order.deliveryLatitude === "number" && typeof order.deliveryLongitude === "number"
+                    ? `${order.deliveryLatitude.toFixed(6)}, ${order.deliveryLongitude.toFixed(6)}`
+                    : "Not shared yet"}
+                </p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Address: {order.deliveryAddress || "Not available"}
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => setActiveOrderId(order.orderId)}
+                >
+                  Set as active
+                </Button>
+              </Card>
+            ))}
+          </div>
+        ) : null}
+      </Card>
+
+      <Card className="space-y-3">
+        <h2 className="text-xl font-semibold">Accepted order locations</h2>
+        <p className="text-sm text-[var(--color-text-muted)]">
+          Restaurant and customer destination markers for your claimed orders.
+        </p>
+        {acceptedMarkers.length > 0 ? (
+          <MapView markers={acceptedMarkers} zoom={13} />
+        ) : (
+          <p className="text-sm text-[var(--color-text-muted)]">
+            Customer destination location will appear after order creation includes coordinates.
+          </p>
+        )}
+      </Card>
+
       <Card className="space-y-4">
         <h2 className="text-xl font-semibold">Claimed order operations</h2>
         <div className="max-w-sm">
@@ -208,6 +413,41 @@ export default function DeliveryOrdersPage() {
             </div>
           </div>
         ) : null}
+      </Card>
+
+      <Card className="space-y-3">
+        <h2 className="text-xl font-semibold">Customer live tracking (active order)</h2>
+        {!activeOrderId.trim() ? (
+          <p className="text-sm text-[var(--color-text-muted)]">
+            Set an active order ID to view customer live location.
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-[var(--color-text-muted)]">Connection:</span>
+              <ConnectionBadge state={customerTrackingConnectionState} />
+              <span className="text-[var(--color-text-muted)]">
+                Last updated{" "}
+                {customerLiveEvent
+                  ? customerTrackingUpdatedLabel
+                  : effectiveCustomerTrackingEvent
+                    ? "from latest snapshot"
+                    : customerTrackingUpdatedLabel}
+              </span>
+            </div>
+            {effectiveCustomerTrackingEvent ? (
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Customer live location: {effectiveCustomerTrackingEvent.latitude},{" "}
+                {effectiveCustomerTrackingEvent.longitude}
+              </p>
+            ) : (
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Waiting for customer live location updates. Destination marker is used as fallback.
+              </p>
+            )}
+            {activeOrderTrackingMarkers.length > 0 ? <MapView markers={activeOrderTrackingMarkers} zoom={14} /> : null}
+          </>
+        )}
       </Card>
 
       <Card className="space-y-3">

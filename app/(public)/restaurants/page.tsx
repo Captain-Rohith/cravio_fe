@@ -38,13 +38,23 @@ export default function RestaurantDiscoveryPage() {
   });
 
   const detectLocation = () => {
-    navigator.geolocation.getCurrentPosition((position) => {
+  console.log("Clicked location button");
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      console.log("SUCCESS", position.coords);
+
       setCoordinates({
         latitude: Number(position.coords.latitude.toFixed(6)),
         longitude: Number(position.coords.longitude.toFixed(6)),
       });
-    });
-  };
+    },
+    (error) => {
+      console.error("GEO ERROR", error);
+      alert(error.message);
+    }
+  );
+};
 
   const normalizeRestaurants = (payload: unknown): Restaurant[] => {
     if (Array.isArray(payload)) {
